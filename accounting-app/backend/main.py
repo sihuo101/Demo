@@ -20,10 +20,10 @@ async def lifespan(app: FastAPI):
     """应用生命周期管理"""
     # 启动时创建表
     Base.metadata.create_all(bind=engine)
-    print("✅ 数据库表已创建")
+    print("[OK] 数据库表已创建")
     yield
     # 关闭时清理
-    print("👋 应用已关闭")
+    print("[OK] 应用已关闭")
 
 
 app = FastAPI(
@@ -224,7 +224,7 @@ async def init_default_categories():
             ]
             db.add_all(default_categories)
             db.commit()
-            print("✅ 默认分类已初始化")
+            print("[OK] 默认分类已初始化")
     finally:
         db.close()
 
