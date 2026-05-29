@@ -84,9 +84,9 @@ export function useChat() {
     }
   }, []);
 
-  // 发送消息（流式）
-  const handleSendMessage = useCallback(async (content) => {
-    if (!currentConversation || !content.trim()) return;
+  // 发送消息到指定对话（流式）
+  const sendMessageToConversation = useCallback(async (conversationId, content) => {
+    if (!conversationId || !content.trim()) return;
 
     // 添加用户消息到列表
     const userMessage = {
@@ -116,7 +116,7 @@ export function useChat() {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          conversation_id: currentConversation.id,
+          conversation_id: conversationId,
           content: content
         })
       });
@@ -197,8 +197,8 @@ export function useChat() {
       // 更新对话列表中的消息数量
       setConversations(prev =>
         prev.map(c =>
-          c.id === currentConversation.id
-            ? { ...c, message_count: (c.message_count || 0) + 2 }
+          c.id === conversationId
+            ? { ...c, message_count: (c.message_count || 0) + 2, updated_at: new Date().toISOString() }
             : c
         )
       );
@@ -219,7 +219,36 @@ export function useChat() {
     } finally {
       setSending(false);
     }
-  }, [currentConversation]);
+  }, []);
+
+  // 发送消息（使用当前对话）
+  const handleSendMessage = useCallback(async (content) => {
+    if (!currentConversation) return;
+    await sendMessageToConversation(currentConversation.id, content);
+  }, [currentConversation, sendMessageToConversation]);
+
+  // 创建对话并发送消息（用于快捷指令）
+  const createConversationAndSend = useCallback(async (content) => {
+    try {
+      // 创建新对话
+      const data = await createConversation({ title: '新对话' });
+      if (!data) return null;
+
+      // 更新状态
+      setConversations(prev => [data, ...prev]);
+      setCurrentConversation(data);
+      setMessages([]);
+
+      // 发送消息
+      await sendMessageToConversation(data.id, content);
+
+      return data;
+    } catch (err) {
+      setError('创建对话失败');
+      console.error(err);
+      return null;
+    }
+  }, [sendMessageToConversation]);
 
   // 清除错误
   const clearError = useCallback(() => {
@@ -238,6 +267,7 @@ export function useChat() {
     deleteConversation: handleDeleteConversation,
     switchConversation,
     sendMessage: handleSendMessage,
+    createConversationAndSend,
     clearError
   };
 }

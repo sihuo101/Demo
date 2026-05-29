@@ -11,6 +11,39 @@ const { Sider, Content } = Layout;
 const { Text } = Typography;
 
 /**
+ * 快捷指令组件
+ */
+function QuickCommand({ text, icon, description, onClick }) {
+  const [isHovered, setIsHovered] = useState(false);
+
+  return (
+    <div
+      onClick={() => onClick(text)}
+      style={{
+        padding: '14px 18px',
+        backgroundColor: isHovered ? '#e6f7ff' : '#f5f5f5',
+        borderRadius: 10,
+        cursor: 'pointer',
+        transition: 'all 0.3s',
+        border: isHovered ? '1px solid #91d5ff' : '1px solid transparent',
+        display: 'flex',
+        alignItems: 'center',
+        gap: 12,
+      }}
+      onMouseEnter={() => setIsHovered(true)}
+      onMouseLeave={() => setIsHovered(false)}
+    >
+      <span style={{ fontSize: 24 }}>{icon}</span>
+      <div style={{ flex: 1 }}>
+        <div style={{ fontWeight: 500, color: '#333' }}>{text}</div>
+        <div style={{ fontSize: 12, color: '#999', marginTop: 2 }}>{description}</div>
+      </div>
+      <span style={{ color: '#7265e6', fontSize: 12 }}>试试 →</span>
+    </div>
+  );
+}
+
+/**
  * 智能体对话页面
  */
 export default function AgentPage() {
@@ -26,6 +59,7 @@ export default function AgentPage() {
     deleteConversation,
     switchConversation,
     sendMessage,
+    createConversationAndSend,
     clearError
   } = useChat();
 
@@ -79,19 +113,19 @@ export default function AgentPage() {
 
   // 发送消息
   const handleSend = async (content) => {
-    // 如果没有当前对话，先创建一个
+    // 如果没有当前对话，创建新对话并直接发送（避免闭包陷阱）
     if (!currentConversation) {
-      const newConv = await createConversation();
-      if (!newConv) return;
-
-      // 等待状态更新后再发送消息
-      setTimeout(async () => {
-        await sendMessage(content);
-      }, 100);
+      await createConversationAndSend(content);
       return;
     }
 
     await sendMessage(content);
+  };
+
+  // 快捷指令 - 创建新对话并执行命令
+  const handleQuickCommand = async (content) => {
+    // 创建新对话并发送消息
+    await createConversationAndSend(content);
   };
 
   // 渲染聊天区域
@@ -164,48 +198,30 @@ export default function AgentPage() {
             maxWidth: 400,
             width: '100%'
           }}>
-            <div
-              onClick={() => handleSend('帮我记一笔午饭35元')}
-              style={{
-                padding: '12px 16px',
-                backgroundColor: '#f5f5f5',
-                borderRadius: 8,
-                cursor: 'pointer',
-                transition: 'background-color 0.3s',
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#e6f7ff'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-            >
-              💬 帮我记一笔午饭35元
-            </div>
-            <div
-              onClick={() => handleSend('这个月花了多少钱')}
-              style={{
-                padding: '12px 16px',
-                backgroundColor: '#f5f5f5',
-                borderRadius: 8,
-                cursor: 'pointer',
-                transition: 'background-color 0.3s',
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#e6f7ff'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-            >
-              💬 这个月花了多少钱
-            </div>
-            <div
-              onClick={() => handleSend('帮我算一下 125 + 378 等于多少')}
-              style={{
-                padding: '12px 16px',
-                backgroundColor: '#f5f5f5',
-                borderRadius: 8,
-                cursor: 'pointer',
-                transition: 'background-color 0.3s',
-              }}
-              onMouseEnter={(e) => e.target.style.backgroundColor = '#e6f7ff'}
-              onMouseLeave={(e) => e.target.style.backgroundColor = '#f5f5f5'}
-            >
-              💬 帮我算一下 125 + 378 等于多少
-            </div>
+            <QuickCommand
+              text="帮我记一笔午饭35元"
+              icon="🍜"
+              description="快速记账"
+              onClick={handleQuickCommand}
+            />
+            <QuickCommand
+              text="这个月花了多少钱"
+              icon="📊"
+              description="查询统计"
+              onClick={handleQuickCommand}
+            />
+            <QuickCommand
+              text="帮我算一下 125 + 378 等于多少"
+              icon="🧮"
+              description="数学计算"
+              onClick={handleQuickCommand}
+            />
+            <QuickCommand
+              text="工资到账8000元"
+              icon="💰"
+              description="记录收入"
+              onClick={handleQuickCommand}
+            />
           </div>
         </div>
       );

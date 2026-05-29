@@ -95,6 +95,7 @@ class OpenAICompatibleLLM(BaseLLM):
                 # 收集工具调用信息
                 tool_calls_buffer = {}
                 content_buffer = ""
+                tool_calls_yielded = False
 
                 async for line in response.aiter_lines():
                     if not line or not line.startswith("data: "):
@@ -102,10 +103,10 @@ class OpenAICompatibleLLM(BaseLLM):
 
                     data = line[6:]  # 去掉 "data: " 前缀
                     if data == "[DONE]":
-                        # 如果有累积的工具调用，返回
-                        if tool_calls_buffer:
+                        # 如果有累积的工具调用且尚未返回，返回（content 置空，避免重复输出）
+                        if tool_calls_buffer and not tool_calls_yielded:
                             yield {
-                                "content": content_buffer,
+                                "content": "",
                                 "tool_calls": list(tool_calls_buffer.values()),
                                 "finish_reason": "tool_calls"
                             }
@@ -151,10 +152,11 @@ class OpenAICompatibleLLM(BaseLLM):
                         if finish_reason:
                             if finish_reason == "tool_calls" and tool_calls_buffer:
                                 yield {
-                                    "content": content_buffer,
+                                    "content": "",
                                     "tool_calls": list(tool_calls_buffer.values()),
                                     "finish_reason": "tool_calls"
                                 }
+                                tool_calls_yielded = True
                             elif finish_reason == "stop":
                                 yield {
                                     "content": "",

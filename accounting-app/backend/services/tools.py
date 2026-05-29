@@ -1,7 +1,7 @@
 """工具定义 - 智能体可调用的工具"""
 
-from typing import Dict, Any, List, Optional
-from datetime import datetime
+from typing import Dict, Any, List, Optional, Tuple
+from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from sqlalchemy import extract, func
 
@@ -9,9 +9,115 @@ from models import Transaction, Category, TransactionType
 from services.calculator import calculator
 
 
+# ==================== 日期解析工具 ====================
+
+def _parse_date_expr(expr: str) -> Tuple[Optional[int], Optional[int], Optional[int]]:
+    """将自然语言日期表达式解析为 (year, month, day)
+
+    支持的表达式：
+    - "today" / "今天" → 今天
+    - "yesterday" / "昨天" → 昨天
+    - "this_month" / "当月" / "本月" / "这个月" → 当前月份
+    - "last_month" / "上月" / "上个月" → 上个月
+    - "this_year" / "今年" → 当前年份
+    - "last_year" / "去年" → 去年
+    - "YYYY-MM" → 指定月份
+    - "YYYY-MM-DD" → 指定日期
+    - "YYYY" → 指定年份
+
+    Returns:
+        (year, month, day) 元组，未解析的部分为 None
+    """
+    if not expr:
+        return None, None, None
+
+    expr = expr.strip().lower()
+    now = datetime.now()
+
+    # 自然语言映射
+    if expr in ("today", "今天", "今日"):
+        return now.year, now.month, now.day
+    elif expr in ("yesterday", "昨天", "昨日"):
+        yesterday = now - timedelta(days=1)
+        return yesterday.year, yesterday.month, yesterday.day
+    elif expr in ("this_month", "当月", "本月", "这个月", "这个月"):
+        return now.year, now.month, None
+    elif expr in ("last_month", "上月", "上个月", "上一个月"):
+        first_of_this_month = now.replace(day=1)
+        last_month = first_of_this_month - timedelta(days=1)
+        return last_month.year, last_month.month, None
+    elif expr in ("this_year", "今年", "本年"):
+        return now.year, None, None
+    elif expr in ("last_year", "去年", "上一年"):
+        return now.year - 1, None, None
+
+    # 尝试解析 YYYY-MM-DD
+    try:
+        dt = datetime.strptime(expr, "%Y-%m-%d")
+        return dt.year, dt.month, dt.day
+    except ValueError:
+        pass
+
+    # 尝试解析 YYYY-MM
+    try:
+        parts = expr.split("-")
+        if len(parts) == 2:
+            year, month = int(parts[0]), int(parts[1])
+            if 1 <= month <= 12:
+                return year, month, None
+    except (ValueError, IndexError):
+        pass
+
+    # 尝试解析 YYYY
+    try:
+        year = int(expr)
+        if 1900 <= year <= 2100:
+            return year, None, None
+    except ValueError:
+        pass
+
+    return None, None, None
+
+
+def _resolve_month(expr: Optional[str]) -> Optional[str]:
+    """将日期表达式解析为 YYYY-MM 格式字符串
+
+    Args:
+        expr: 日期表达式（如 "this_month", "last_month", "2026-05" 等）
+
+    Returns:
+        YYYY-MM 格式字符串，或 None
+    """
+    if not expr:
+        now = datetime.now()
+        return f"{now.year}-{now.month:02d}"
+
+    year, month, _ = _parse_date_expr(expr)
+    if year and month:
+        return f"{year}-{month:02d}"
+    elif year:
+        return f"{year}"
+
+    # 解析失败，返回当月
+    now = datetime.now()
+    return f"{now.year}-{now.month:02d}"
+
+
 # ==================== 工具定义 ====================
 
 TOOLS_DEFINITION = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_current_date",
+            "description": "获取当前日期和时间信息。当用户提到'今天'、'当月'、'本月'、'这个月'、'今年'等相对时间概念时，先调用此工具获取准确日期。",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
     {
         "type": "function",
         "function": {
@@ -50,13 +156,13 @@ TOOLS_DEFINITION = [
         "type": "function",
         "function": {
             "name": "get_transactions",
-            "description": "查询账单记录。当用户想查看账单、交易记录、消费明细时使用。",
+            "description": "查询账单记录。当用户想查看账单、交易记录、消费明细时使用。支持自然语言日期：today/yesterday/this_month/last_month/this_year/last_year，或 YYYY-MM/YYYY-MM-DD 格式。",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "month": {
                         "type": "string",
-                        "description": "月份，格式 YYYY-MM，如 2024-01"
+                        "description": "日期表达式，支持：today(今天), this_month(当月), last_month(上月), this_year(今年), last_year(去年), 或 YYYY-MM/YYYY-MM-DD 格式"
                     },
                     "type": {
                         "type": "string",
@@ -115,7 +221,7 @@ TOOLS_DEFINITION = [
         "type": "function",
         "function": {
             "name": "get_statistics",
-            "description": "获取统计数据。当用户询问总收入、总支出、结余、月度统计、分类统计时使用。",
+            "description": "获取统计数据。当用户询问总收入、总支出、结余、月度统计、分类统计、花销总结时使用。支持自然语言日期：today/this_month/last_month/this_year/last_year，或 YYYY-MM 格式。",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -125,7 +231,7 @@ TOOLS_DEFINITION = [
                     },
                     "month": {
                         "type": "string",
-                        "description": "月份，格式 YYYY-MM，用于获取单月统计"
+                        "description": "日期表达式，支持：this_month(当月), last_month(上月), this_year(今年), 或 YYYY-MM 格式。当用户说'当月花销'时传 this_month"
                     }
                 },
                 "required": []
@@ -239,7 +345,9 @@ def execute_tool(
         工具执行结果
     """
     try:
-        if tool_name == "create_transaction":
+        if tool_name == "get_current_date":
+            return _get_current_date()
+        elif tool_name == "create_transaction":
             return _create_transaction(arguments, db)
         elif tool_name == "get_transactions":
             return _get_transactions(arguments, db)
@@ -255,6 +363,24 @@ def execute_tool(
             return {"success": False, "error": f"未知工具: {tool_name}"}
     except Exception as e:
         return {"success": False, "error": f"工具执行错误: {str(e)}"}
+
+
+def _get_current_date() -> Dict[str, Any]:
+    """获取当前日期时间信息"""
+    now = datetime.now()
+    weekday_names = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
+    return {
+        "success": True,
+        "date": now.strftime("%Y-%m-%d"),
+        "year": now.year,
+        "month": now.month,
+        "day": now.day,
+        "weekday": weekday_names[now.weekday()],
+        "time": now.strftime("%H:%M:%S"),
+        "this_month": f"{now.year}-{now.month:02d}",
+        "last_month_date": (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m"),
+        "message": f"今天是 {now.year}年{now.month}月{now.day}日 {weekday_names[now.weekday()]}"
+    }
 
 
 def _create_transaction(args: Dict[str, Any], db: Session) -> Dict[str, Any]:
@@ -330,17 +456,26 @@ def _get_transactions(args: Dict[str, Any], db: Session) -> Dict[str, Any]:
     """查询账单"""
     query = db.query(Transaction)
 
-    # 按月份筛选
-    month = args.get("month")
-    if month:
-        try:
-            year, mon = map(int, month.split("-"))
-            query = query.filter(
-                extract("year", Transaction.date) == year,
-                extract("month", Transaction.date) == mon
-            )
-        except ValueError:
-            return {"success": False, "error": "月份格式错误"}
+    # 按月份筛选（支持自然语言日期表达式）
+    month_expr = args.get("month")
+    if month_expr:
+        resolved = _resolve_month(month_expr)
+        if resolved:
+            try:
+                parts = resolved.split("-")
+                if len(parts) == 2:
+                    year, mon = int(parts[0]), int(parts[1])
+                    query = query.filter(
+                        extract("year", Transaction.date) == year,
+                        extract("month", Transaction.date) == mon
+                    )
+                elif len(parts) == 1:
+                    year = int(parts[0])
+                    query = query.filter(
+                        extract("year", Transaction.date) == year
+                    )
+            except (ValueError, IndexError):
+                return {"success": False, "error": f"日期解析失败: {month_expr}"}
 
     # 按类型筛选
     trans_type = args.get("type")
@@ -436,15 +571,18 @@ def _delete_transaction(args: Dict[str, Any], db: Session) -> Dict[str, Any]:
 
 def _get_statistics(args: Dict[str, Any], db: Session) -> Dict[str, Any]:
     """获取统计"""
-    year = args.get("year", datetime.now().year)
-    month = args.get("month")
+    now = datetime.now()
+    year = args.get("year", now.year)
+    month_expr = args.get("month")
 
-    if month:
-        # 单月统计
+    if month_expr:
+        # 单月统计（支持自然语言日期表达式）
+        resolved = _resolve_month(month_expr)
         try:
-            y, m = map(int, month.split("-"))
-        except ValueError:
-            return {"success": False, "error": "月份格式错误"}
+            parts = resolved.split("-")
+            y, m = int(parts[0]), int(parts[1])
+        except (ValueError, IndexError):
+            return {"success": False, "error": f"日期解析失败: {month_expr}"}
 
         transactions = db.query(Transaction).filter(
             extract("year", Transaction.date) == y,
