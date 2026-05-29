@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from datetime import datetime
-from models import TransactionType
+from models import TransactionType, MessageRole
 
 
 # ==================== 分类相关 ====================
@@ -82,3 +82,57 @@ class StatisticsResponse(BaseModel):
     balance: float
     monthly_stats: List[MonthlyStats]
     category_stats: List[CategoryStats]
+
+
+# ==================== 对话相关 ====================
+
+class ConversationCreate(BaseModel):
+    """创建对话请求"""
+    title: Optional[str] = Field(default="新对话", max_length=100, description="对话标题")
+
+
+class ConversationResponse(BaseModel):
+    """对话响应模型"""
+    id: int
+    title: str
+    created_at: datetime
+    updated_at: datetime
+    message_count: Optional[int] = 0
+
+    class Config:
+        from_attributes = True
+
+
+class MessageCreate(BaseModel):
+    """创建消息请求"""
+    content: str = Field(..., min_length=1, description="消息内容")
+
+
+class MessageResponse(BaseModel):
+    """消息响应模型"""
+    id: int
+    conversation_id: int
+    role: MessageRole
+    content: str
+    metadata_json: Optional[Dict[str, Any]] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class ChatRequest(BaseModel):
+    """聊天请求"""
+    conversation_id: int = Field(..., description="对话ID")
+    content: str = Field(..., min_length=1, description="消息内容")
+
+
+class ChatResponse(BaseModel):
+    """聊天响应"""
+    message: MessageResponse
+    tool_calls: Optional[List[Dict[str, Any]]] = None
+
+
+class STTResponse(BaseModel):
+    """语音识别响应"""
+    text: str

@@ -5,10 +5,12 @@ import {
   AccountBookOutlined,
   PieChartOutlined,
   UnorderedListOutlined,
+  RobotOutlined,
 } from '@ant-design/icons';
 import TransactionPage from './pages/TransactionPage';
 import StatisticsPage from './pages/StatisticsPage';
 import HistoryPage from './pages/HistoryPage';
+import AgentPage from './pages/AgentPage';
 
 const { Header, Content, Sider } = Layout;
 
@@ -27,6 +29,11 @@ const menuItems = [
     key: '/statistics',
     icon: <PieChartOutlined />,
     label: <Link to="/statistics">统计</Link>,
+  },
+  {
+    key: '/agent',
+    icon: <RobotOutlined />,
+    label: <Link to="/agent">智能助手</Link>,
   },
 ];
 
@@ -64,6 +71,7 @@ function AppLayout() {
             <Route path="/" element={<TransactionPage />} />
             <Route path="/history" element={<HistoryPage />} />
             <Route path="/statistics" element={<StatisticsPage />} />
+            <Route path="/agent" element={<AgentPage />} />
           </Routes>
         </Content>
       </Layout>

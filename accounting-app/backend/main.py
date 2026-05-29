@@ -7,12 +7,47 @@ from datetime import datetime, timedelta
 from contextlib import asynccontextmanager
 
 from database import engine, get_db, Base
-from models import Transaction, Category, TransactionType
+from models import Transaction, Category, TransactionType, Conversation, Message
 from schemas import (
     TransactionCreate, TransactionResponse, TransactionListResponse,
     CategoryCreate, CategoryResponse,
     StatisticsResponse, MonthlyStats, CategoryStats
 )
+from config import settings
+from routers import conversations, chat, stt
+
+
+def init_default_categories():
+    """初始化默认分类"""
+    db = next(get_db())
+    try:
+        # 检查是否已有分类
+        if db.query(Category).count() == 0:
+            default_categories = [
+                # 支出分类
+                Category(name="餐饮", icon="🍜", type=TransactionType.EXPENSE),
+                Category(name="交通", icon="🚗", type=TransactionType.EXPENSE),
+                Category(name="购物", icon="🛒", type=TransactionType.EXPENSE),
+                Category(name="住房", icon="🏠", type=TransactionType.EXPENSE),
+                Category(name="娱乐", icon="🎮", type=TransactionType.EXPENSE),
+                Category(name="医疗", icon="💊", type=TransactionType.EXPENSE),
+                Category(name="教育", icon="📚", type=TransactionType.EXPENSE),
+                Category(name="通讯", icon="📱", type=TransactionType.EXPENSE),
+                Category(name="其他支出", icon="📦", type=TransactionType.EXPENSE),
+                # 收入分类
+                Category(name="工资", icon="💰", type=TransactionType.INCOME),
+                Category(name="奖金", icon="🎁", type=TransactionType.INCOME),
+                Category(name="投资", icon="📈", type=TransactionType.INCOME),
+                Category(name="兼职", icon="💼", type=TransactionType.INCOME),
+                Category(name="其他收入", icon="💵", type=TransactionType.INCOME),
+            ]
+            db.add_all(default_categories)
+            db.commit()
+            print("[OK] 默认分类已初始化")
+        else:
+            print("[OK] 分类数据已存在，跳过初始化")
+    finally:
+        db.close()
 
 
 @asynccontextmanager
@@ -21,6 +56,8 @@ async def lifespan(app: FastAPI):
     # 启动时创建表
     Base.metadata.create_all(bind=engine)
     print("[OK] 数据库表已创建")
+    # 初始化默认分类
+    init_default_categories()
     yield
     # 关闭时清理
     print("[OK] 应用已关闭")
@@ -36,11 +73,16 @@ app = FastAPI(
 # 配置 CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=settings.CORS_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# 注册路由
+app.include_router(conversations.router)
+app.include_router(chat.router)
+app.include_router(stt.router)
 
 
 # ==================== 分类接口 ====================
@@ -193,40 +235,6 @@ def get_statistics(
         monthly_stats=monthly_stats,
         category_stats=category_stats
     )
-
-
-# ==================== 初始化默认分类 ====================
-
-@app.on_event("startup")
-async def init_default_categories():
-    """初始化默认分类"""
-    db = next(get_db())
-    try:
-        # 检查是否已有分类
-        if db.query(Category).count() == 0:
-            default_categories = [
-                # 支出分类
-                Category(name="餐饮", icon="🍜", type=TransactionType.EXPENSE),
-                Category(name="交通", icon="🚗", type=TransactionType.EXPENSE),
-                Category(name="购物", icon="🛒", type=TransactionType.EXPENSE),
-                Category(name="住房", icon="🏠", type=TransactionType.EXPENSE),
-                Category(name="娱乐", icon="🎮", type=TransactionType.EXPENSE),
-                Category(name="医疗", icon="💊", type=TransactionType.EXPENSE),
-                Category(name="教育", icon="📚", type=TransactionType.EXPENSE),
-                Category(name="通讯", icon="📱", type=TransactionType.EXPENSE),
-                Category(name="其他支出", icon="📦", type=TransactionType.EXPENSE),
-                # 收入分类
-                Category(name="工资", icon="💰", type=TransactionType.INCOME),
-                Category(name="奖金", icon="🎁", type=TransactionType.INCOME),
-                Category(name="投资", icon="📈", type=TransactionType.INCOME),
-                Category(name="兼职", icon="💼", type=TransactionType.INCOME),
-                Category(name="其他收入", icon="💵", type=TransactionType.INCOME),
-            ]
-            db.add_all(default_categories)
-            db.commit()
-            print("[OK] 默认分类已初始化")
-    finally:
-        db.close()
 
 
 if __name__ == "__main__":
